@@ -1,0 +1,21 @@
+default:
+    suites:
+        sqlite:
+            contexts:
+                - FeatureContext:
+                    config:
+                        driver: pdo_sqlite
+                        path: %paths.base%/data/db.sqlite
+                    entitiesDirs:
+                        - %paths.base%/tests/Zorbus/Behat/Test/Entity
+        mysql:
+            contexts:
+                - FeatureContext:
+                    config:
+                        driver: pdo_mysql
+                        host: localhost
+                        dbname: behat_contexts
+                        user: root
+                        passowrd: ~
+                    entitiesDirs:
+                        - %paths.base%/tests/Zorbus/Behat/Test/Entity
