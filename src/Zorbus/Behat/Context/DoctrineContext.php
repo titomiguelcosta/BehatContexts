@@ -120,9 +120,9 @@ class DoctrineContext implements Context, SnippetAcceptingContext
     }
 
     /**
-     * @Given I run the fixtures in the directory :dir
+     * @Given the fixtures in the directory :dir are loaded
      */
-    public function runTheFixturesInTheDirectory($dir, $append = false)
+    public function theFixturesInTheDirectoryAreLoaded($dir, $append = false)
     {
         if (false === is_dir($dir)) {
             throw new RuntimeException(sprintf('%s is not a valid directory path', $dir));
@@ -137,11 +137,48 @@ class DoctrineContext implements Context, SnippetAcceptingContext
     }
 
     /**
-     * @Given I append the fixtures in the directory :dir
+     * @Given the fixtures in the directory :dir are appended
      */
-    public function appendTheFixturesInTheDirectory($dir)
+    public function theFixturesInTheDirectoryAreAppended($dir)
     {
-        $this->runTheFixturesInTheDirectory($dir, true);
+        $this->theFixturesInTheDirectoryAreLoaded($dir, true);
+    }
+
+    /**
+     * @Given the fixture :file is loaded
+     */
+    public function theFixtureIsLoaded($file, $append = false)
+    {
+        $sourceFile = realpath($file);
+
+        if (false === file_exists($sourceFile) || false === is_readable($sourceFile)) {
+            throw new RuntimeException(sprintf('%s is not a valid or readable file', $file));
+        }
+
+        $loader = new Loader();
+        require_once $sourceFile;
+        $declared = get_declared_classes();
+
+        foreach ($declared as $className) {
+            $reflClass = new \ReflectionClass($className);
+
+            if ($reflClass->getFileName() === $sourceFile && !$loader->isTransient($className)) {
+                $fixture = new $className;
+                $loader->addFixture($fixture);
+            }
+        }
+
+        $purger = $append ? null : new ORMPurger();
+        $executor = new ORMExecutor($this->entityManager, $purger);
+        $executor->execute($loader->getFixtures(), $append);
+    }
+
+    /**
+     * @Given the fixture :file is appended
+     */
+    public function theFixtureIsAppended($file)
+    {
+        $this->theFixtureIsLoaded($file, true);
     }
 
     private function buildDatabase()
