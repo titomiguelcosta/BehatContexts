@@ -5,12 +5,12 @@ Feature:
 
   @database
   Scenario: clean the database
-    Then the repository "Zorbus\Behat\Test\Entity\Post" has 0 records
-    Given the fixtures in the directory "tests/Zorbus/Behat/Test/DataFixtures" are loaded
+    Given the repository "Zorbus\Behat\Test\Entity\Post" has 0 records
+    And the fixtures in the directory "tests/Zorbus/Behat/Test/DataFixtures" are loaded
     Then the repository "Zorbus\Behat\Test\Entity\Post" has 2 records
     And the fixtures in the directory "tests/Zorbus/Behat/Test/DataFixtures" are appended
     Then the repository "Zorbus\Behat\Test\Entity\Post" has 4 records
-    And I truncate the repository "Zorbus\Behat\Test\Entity\Post"
+    And the repository "Zorbus\Behat\Test\Entity\Post" is truncated
     Then the repository "Zorbus\Behat\Test\Entity\Post" has 0 records
     And the fixtures in the directory "tests/Zorbus/Behat/Test/DataFixtures" are appended
     Then the repository "Zorbus\Behat\Test\Entity\Post" has 2 records
