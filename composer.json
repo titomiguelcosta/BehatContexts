@@ -12,12 +12,11 @@
         "behat/behat": "~3.0"
     },
     "autoload": {
-        "psr-0": {
-            "Zorbus\\Behat": "src/",
-            "Zorbus\\Behat\\Test": "tests/"
+        "psr-4": {
+            "Zorbus\\Behat\\": "src/",
+            "Zorbus\\Behat\\Test\\": "tests/"
         }
     },
-    "target-dir": "Zorbus/Behat",
     "license": "MIT",
     "authors": [
         {
