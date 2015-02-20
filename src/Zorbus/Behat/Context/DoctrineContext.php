@@ -5,6 +5,7 @@ namespace Zorbus\Behat\Context;
 use Behat\Behat\Context\Context;
 use Behat\Behat\Context\SnippetAcceptingContext;
 use Behat\Behat\Hook\Scope\BeforeScenarioScope;
+use Doctrine\DBAL\Platforms\SqlitePlatform;
 use Doctrine\ORM\Tools\SchemaTool;
 use Behat\Gherkin\Node\TableNode;
 use Doctrine\ORM\EntityManager;
@@ -20,6 +21,7 @@ use Exception;
 
 class DoctrineContext implements Context, SnippetAcceptingContext
 {
+    private static $database = null;
     private $connection;
     private $entityManager;
 
@@ -34,7 +36,6 @@ class DoctrineContext implements Context, SnippetAcceptingContext
      */
     public function cleanDatabase(BeforeScenarioScope $scope)
     {
-        $this->connection->getSchemaManager()->dropAndCreateDatabase($this->connection->getDatabase());
         $this->buildDatabase();
     }
 
@@ -50,10 +51,12 @@ class DoctrineContext implements Context, SnippetAcceptingContext
             $entity = new $class();
 
             foreach ($entries as $field => $value) {
-                $setter = 'set' . ucfirst($field);
+                $setter = 'set'.ucfirst($field);
 
                 if (false === method_exists($entity, $setter)) {
-                    throw new RuntimeException(sprintf('The class %s does not have a method named %s.', $class, $setter));
+                    throw new RuntimeException(
+                        sprintf('The class %s does not have a method named %s.', $class, $setter)
+                    );
                 }
                 $entity->$setter($value);
             }
@@ -65,9 +68,9 @@ class DoctrineContext implements Context, SnippetAcceptingContext
     }
 
     /**
-     * @Given I truncate the repository :repository
+     * @Given the repository :repository is truncated
      */
-    public function ITruncateTheRepository($class)
+    public function theRepositoryIsTruncated($class)
     {
         $table = $this->entityManager->getClassMetadata($class)->getTableName();
         $this->connection->executeQuery($this->connection->getDatabasePlatform()->getTruncateTableSQL($table, true));
@@ -104,7 +107,7 @@ class DoctrineContext implements Context, SnippetAcceptingContext
 
             $pos = 0;
             foreach ($criteria as $rows) {
-                $placeholder = 'pos' . $pos;
+                $placeholder = 'pos'.$pos;
                 $query->where(sprintf('e.%s = :%s', $rows['field'], $placeholder));
                 $query->setParameter($placeholder, $rows['value']);
             }
@@ -183,8 +186,29 @@ class DoctrineContext implements Context, SnippetAcceptingContext
 
     private function buildDatabase()
     {
+        if ($this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
+            $path = $this->connection->getDatabase();
+            $copy = $path.'.copy';
+
+            if (null !== self::$database) {
+                if (copy($copy, $path)) {
+                    return;
+                }
+            }
+        }
+
+        $this->connection->getSchemaManager()->dropAndCreateDatabase($this->connection->getDatabase());
         $this->selectDatabase();
-        $this->connection->query($this->dumpStructure());
+        $queries = $this->dumpStructure();
+        foreach ($queries as $query) {
+            $this->connection->query($query);
+        }
+
+        if ($this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
+            if (copy($path, $copy)) {
+                self::$database = 'sqlite';
+            }
+        }
     }
 
     private function createDatabase()
@@ -211,13 +235,13 @@ class DoctrineContext implements Context, SnippetAcceptingContext
         $metadatas = $this->entityManager->getMetadataFactory()->getAllMetadata();
         if (false === empty($metadatas)) {
             $schemaTool = new SchemaTool($this->entityManager);
-            $sqls = $schemaTool->getUpdateSchemaSql($metadatas, true);
+            $sqls = $schemaTool->getUpdateSchemaSql($metadatas, false);
 
             if (0 === count($sqls)) {
                 throw new RuntimeException("No queries to execute.");
             }
 
-            return implode(';', $sqls) . ';';
+            return $sqls;
         } else {
             throw new RuntimeException("No metadata available.");
         }
