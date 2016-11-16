@@ -62,9 +62,8 @@ class DoctrineContext implements Context, SnippetAcceptingContext
             }
 
             $this->entityManager->persist($entity);
+            $this->entityManager->flush($entity);
         }
-
-        $this->entityManager->flush($entity);
     }
 
     /**
