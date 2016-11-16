@@ -5,30 +5,47 @@ namespace Zorbus\Behat\Context;
 use Behat\Behat\Context\Context;
 use Behat\Behat\Context\SnippetAcceptingContext;
 use Behat\Behat\Hook\Scope\BeforeScenarioScope;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
-use Doctrine\ORM\Tools\SchemaTool;
 use Behat\Gherkin\Node\TableNode;
-use Doctrine\ORM\EntityManager;
+use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
+use Doctrine\Common\DataFixtures\Loader;
+use Doctrine\Common\DataFixtures\Purger\ORMPurger;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Migrations\Configuration\Configuration;
 use Doctrine\DBAL\Migrations\Migration;
-use Doctrine\Common\DataFixtures\Loader;
-use Doctrine\Common\DataFixtures\Purger\ORMPurger;
-use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
+use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Tools\SchemaTool;
+use Exception;
 use PDOException;
 use RuntimeException;
-use Exception;
 
 class DoctrineContext implements Context, SnippetAcceptingContext
 {
-    private static $database = null;
+    /**
+     * @var Connection
+     */
     private $connection;
+
+    /**
+     * @var EntityManager
+     */
     private $entityManager;
 
-    public function __construct(Connection $connection, EntityManager $entityManager)
+    /**
+     * @var string
+     */
+    private $cacheDir;
+
+    /**
+     * @param Connection $connection
+     * @param EntityManager $entityManager
+     * @param string|null $cacheDir
+     */
+    public function __construct(Connection $connection, EntityManager $entityManager, $cacheDir = null)
     {
         $this->connection = $connection;
         $this->entityManager = $entityManager;
+        $this->cacheDir = $cacheDir;
     }
 
     /**
@@ -185,28 +202,28 @@ class DoctrineContext implements Context, SnippetAcceptingContext
 
     private function buildDatabase()
     {
-        if ($this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
-            $path = $this->connection->getDatabase();
-            $copy = $path.'.copy';
+        if ($this->cacheDir && $this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
+            $cachePath = $this->createSqliteCachePath($this->connection->getDatabase());
 
-            if (null !== self::$database) {
-                if (copy($copy, $path)) {
-                    return;
+            if (file_exists($cachePath)) {
+                copy($cachePath, $this->connection->getDatabase());
+
+                return;
+            } else {
+                $this->dropCreateAndSchemaUp();
+
+                $cacheDir = dirname($cachePath);
+
+                if (!is_dir($cacheDir)) {
+                    if (!@mkdir($cacheDir, 0777, true) && !is_dir($cacheDir)) {
+                        throw new RuntimeException('Failed to create SQLite cache directory: '.$cacheDir);
+                    }
                 }
-            }
-        }
 
-        $this->connection->getSchemaManager()->dropAndCreateDatabase($this->connection->getDatabase());
-        $this->selectDatabase();
-        $queries = $this->dumpStructure();
-        foreach ($queries as $query) {
-            $this->connection->query($query);
-        }
-
-        if ($this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
-            if (copy($path, $copy)) {
-                self::$database = 'sqlite';
+                copy($this->connection->getDatabase(), $cachePath);
             }
+        } else {
+            $this->dropCreateAndSchemaUp();
         }
     }
 
@@ -227,7 +244,7 @@ class DoctrineContext implements Context, SnippetAcceptingContext
     /**
      * Runs the symfony equivalent command doctrine:schema:update --dump-sql
      *
-     * @return string
+     * @return string[]
      */
     private function dumpStructure()
     {
@@ -272,6 +289,31 @@ class DoctrineContext implements Context, SnippetAcceptingContext
         try {
             $this->connection->executeQuery(sprintf('USE %s', $this->connection->getDatabase()));
         } catch (Exception $e) {
+        }
+    }
+
+    /**
+     * @param string $databasePath
+     *
+     * @return string
+     */
+    private function createSqliteCachePath($databasePath)
+    {
+        return $this->cacheDir.DIRECTORY_SEPARATOR.(new \SplFileInfo($databasePath))->getFilename().'.cache';
+    }
+
+    /**
+     * Drops, creates the database and builds the schema.
+     */
+    private function dropCreateAndSchemaUp()
+    {
+        $this->connection->getSchemaManager()->dropAndCreateDatabase($this->connection->getDatabase());
+        $this->selectDatabase();
+
+        $queries = $this->dumpStructure();
+
+        foreach ($queries as $query) {
+            $this->connection->exec($query);
         }
     }
 }
